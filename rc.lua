@@ -13,9 +13,13 @@ local beautiful = require("beautiful")
 local naughty = require("naughty")
 local menubar = require("menubar")
 local hotkeys_popup = require("awful.hotkeys_popup")
+
+-- Включить автоматическое определение DPI
 awful.screen.set_auto_dpi_enabled(true)
+
 -- Включить виджет помощи по горячим клавишам для VIM и других приложений
 require("awful.hotkeys_popup.keys")
+
 -- {{{ Обработка ошибок
 if awesome.startup_errors then
     naughty.notify({
@@ -38,9 +42,11 @@ do
     end)
 end
 -- }}}
+
 -- {{{ Определение переменных
 -- Цветовая схема Solarized Light Yellow
 beautiful.init(gears.filesystem.get_themes_dir() .. "default/theme.lua")
+
 -- Настройка цветов
 beautiful.bg_normal     = "#fdf6e3"  -- base3
 beautiful.bg_focus      = "#fdf6e3"  -- base3
@@ -54,33 +60,152 @@ beautiful.fg_minimize   = "#657b83"  -- base00
 beautiful.border_normal = "#93a1a1"  -- base1
 beautiful.border_focus  = "#b58900"  -- base01/yellow
 beautiful.border_marked = "#dc322f"  -- red
+
+-- Отступы между окнами
+beautiful.useless_gap   = 5          -- Размер отступов между окнами
+beautiful.gap_single_client = true   -- Показывать отступы даже для одного окна
+
 -- Панель (wibar)
 beautiful.wibar_bg      = "#fdf6e3"  -- base3
 beautiful.wibar_fg      = "#657b83"  -- base00
--- Увеличенные шрифты
-beautiful.font          = "Ubuntu 16"
-beautiful.taglist_font  = "Ubuntu Bold 16"
+
+-- Увеличенные шрифты (базовые размеры, будут масштабироваться автоматически)
+beautiful.font          = "Ubuntu 12"
+beautiful.taglist_font  = "Ubuntu Bold 12"
+
 -- Иконки (Nerd Fonts)
-local icon_font = "Ubuntu Nerd Font 14"
+local icon_font = "Ubuntu Nerd Font 11"
+
 -- Приложения по умолчанию
 terminal = "alacritty"
 editor = os.getenv("EDITOR") or "nano"
 editor_cmd = terminal .. " -e " .. editor
+
 -- Клавиша-модификатор по умолчанию
 modkey = "Mod4"
+
 -- Layouts
 awful.layout.layouts = {
     awful.layout.suit.tile.left,
     awful.layout.suit.floating,
     awful.layout.suit.max,
 }
+
 -- Функция для установки обоев
 local function set_wallpaper(s)
     gears.wallpaper.maximized("/home/redbird/Downloads/robot.jpg", s, true)
 end
+
+-- Функция для обновления DPI при изменении экранов
+local function update_dpi_on_change()
+    -- Принудительно обновляем все экраны
+    for s in screen do
+        -- Пересоздаем wibar с новыми размерами
+        if s.mywibox then
+            s.mywibox:remove()
+        end
+        
+        -- Создаем wibar с учетом текущего DPI
+        s.mywibox = awful.wibar({
+            position = "top",
+            screen = s,
+            height = beautiful.get_font_height(beautiful.font) * 2.5,  -- Автоматическая высота
+            bg = beautiful.wibar_bg or "#fdf6e3",
+            fg = beautiful.wibar_fg or "#657b83",
+            border_width = 0,
+        })
+        
+        -- Пересобираем wibar
+        s.mywibox:setup {
+            layout = wibox.layout.align.horizontal,
+            { -- Left widgets
+                layout = wibox.layout.fixed.horizontal,
+                spacing = 8,
+                awful.widget.taglist {
+                    screen = s,
+                    filter = awful.widget.taglist.filter.all,
+                    buttons = taglist_buttons,
+                    widget_template = {
+                        {
+                            {
+                                id = 'text_role',
+                                widget = wibox.widget.textbox,
+                                font = beautiful.taglist_font,
+                            },
+                            left = 12,
+                            right = 12,
+                            top = 6,
+                            bottom = 6,
+                            widget = wibox.container.margin,
+                        },
+                        id = 'background_role',
+                        widget = wibox.container.background,
+                    },
+                },
+                s.mypromptbox,
+            },
+            { -- Middle widget - часы по центру
+                mytextclock,
+                halign = "center",
+                valign = "center",
+                layout = wibox.container.place,
+            },
+            { -- Right widgets
+                layout = wibox.layout.fixed.horizontal,
+                spacing = 12,
+                app_launcher,
+                separator,
+                mykeyboardlayout,
+                separator,
+                wifi_icon,
+                separator,
+                bluetooth_icon,
+                separator,
+                {
+                    volume_icon,
+                    volume_widget,
+                    layout = wibox.layout.fixed.horizontal,
+                    spacing = 4,
+                },
+            },
+        }
+    end
+    
+    -- Уведомление о изменении DPI
+    naughty.notify({
+        title = "DPI обновлен",
+        text = "Автоматическое масштабирование применено для всех экранов",
+        timeout = 3,
+        bg = "#fdf6e3",
+        fg = "#657b83",
+    })
+end
+
+-- Обработчик изменения экранов
+screen.connect_signal("property::geometry", function(s)
+    set_wallpaper(s)
+    gears.timer.delayed_call(function()
+        update_dpi_on_change()
+    end)
+end)
+
+-- Обработчик подключения/отключения экранов
+screen.connect_signal("added", function(s)
+    gears.timer.delayed_call(function()
+        update_dpi_on_change()
+    end)
+end)
+
+screen.connect_signal("removed", function(s)
+    gears.timer.delayed_call(function()
+        update_dpi_on_change()
+    end)
+end)
+
 -- Обновление обоев при изменении геометрии экрана
 screen.connect_signal("property::geometry", set_wallpaper)
 -- }}}
+
 -- {{{ Меню
 myawesomemenu = {
    { "hotkeys", function() hotkeys_popup.show_help(nil, awful.screen.focused()) end },
@@ -89,17 +214,21 @@ myawesomemenu = {
    { "restart", awesome.restart },
    { "quit", function() awesome.quit() end },
 }
+
 mymainmenu = awful.menu({
     items = {
         { "awesome", myawesomemenu, beautiful.awesome_icon },
         { "open terminal", terminal }
     }
 })
+
 menubar.utils.terminal = terminal
 -- }}}
+
 -- {{{ Wibar
 -- Индикатор и переключатель раскладки клавиатуры
 mykeyboardlayout = awful.widget.keyboardlayout()
+
 -- Виджет часов
 mytextclock = wibox.widget.textclock("%a %d %b %H:%M", 10)
 
@@ -316,7 +445,7 @@ awful.screen.connect_for_each_screen(function(s)
     s.mywibox = awful.wibar({
         position = "top",
         screen = s,
-        height = 32,  -- Увеличена высота
+        height = beautiful.get_font_height(beautiful.font) * 2.5,  -- Автоматическая высота
         bg = beautiful.wibar_bg or "#fdf6e3",
         fg = beautiful.wibar_fg or "#657b83",
         border_width = 0,
@@ -398,22 +527,38 @@ globalkeys = gears.table.join(
     awful.key({ modkey,           }, "Escape", awful.tag.history.restore,
               {description = "go back", group = "tag"}),
 
-    -- Скриншоты
+    -- Скриншоты всего рабочего пространства
     awful.key({ }, "Print", function()
-        awful.spawn("scrot -u -q 100 'screenshot_%Y-%m-%d-%H-%M-%S.png' -e 'mv $f ~/Pictures/'")
-    end, {description = "Скриншот активного окна", group = "screenshot"}),
+        awful.spawn("scrot -q 100 'screenshot_%Y-%m-%d-%H-%M-%S.png' -e 'mv $f ~/Pictures/'")
+    end, {description = "Скриншот всего рабочего пространства", group = "screenshot"}),
 
     awful.key({ modkey }, "Print", function()
         awful.spawn("scrot -s -q 100 'screenshot_%Y-%m-%d-%H-%M-%S.png' -e 'mv $f ~/Pictures/'")
-    end, {description = "Скриншот области", group = "screenshot"}),
+    end, {description = "Скриншот выбранной области", group = "screenshot"}),
 
     awful.key({ "Shift" }, "Print", function()
-        awful.spawn("scrot -q 100 'screenshot_%Y-%m-%d-%H-%M-%S.png' -e 'mv $f ~/Pictures/'")
-    end, {description = "Скриншот всего экрана", group = "screenshot"}),
+        awful.spawn("scrot -u -q 100 'screenshot_%Y-%m-%d-%H-%M-%S.png' -e 'mv $f ~/Pictures/'")
+    end, {description = "Скриншот активного окна", group = "screenshot"}),
 
     awful.key({ modkey, "Shift" }, "Print", function()
         awful.spawn("scrot -q 100 -d 5 'screenshot_%Y-%m-%d-%H-%M-%S.png' -e 'mv $f ~/Pictures/'")
-    end, {description = "Скриншот с задержкой 5 сек", group = "screenshot"}),
+    end, {description = "Скриншот всего экрана с задержкой 5 сек", group = "screenshot"}),
+
+    -- Ручное управление DPI
+    awful.key({ modkey, "Control" }, "plus", function()
+        awful.spawn.with_shell("xrandr --output $(xrandr | grep ' connected' | cut -d' ' -f1) --scale 1.2x1.2")
+        gears.timer.delayed_call(update_dpi_on_change)
+    end, {description = "Увеличить масштаб", group = "display"}),
+
+    awful.key({ modkey, "Control" }, "minus", function()
+        awful.spawn.with_shell("xrandr --output $(xrandr | grep ' connected' | cut -d' ' -f1) --scale 0.8x0.8")
+        gears.timer.delayed_call(update_dpi_on_change)
+    end, {description = "Уменьшить масштаб", group = "display"}),
+
+    awful.key({ modkey, "Control" }, "0", function()
+        awful.spawn.with_shell("xrandr --output $(xrandr | grep ' connected' | cut -d' ' -f1) --scale 1x1")
+        gears.timer.delayed_call(update_dpi_on_change)
+    end, {description = "Сбросить масштаб", group = "display"}),
 
     awful.key({ modkey,           }, "j",
         function ()
@@ -604,7 +749,8 @@ awful.rules.rules = {
          keys = clientkeys,
          buttons = clientbuttons,
          screen = awful.screen.preferred,
-         placement = awful.placement.no_overlap + awful.placement.no_offscreen
+         placement = awful.placement.no_overlap + awful.placement.no_offscreen,
+         size_hints_honor = false,  -- Важно для правильной работы gaps
       }
     },
     -- Правила для плавающих окон
